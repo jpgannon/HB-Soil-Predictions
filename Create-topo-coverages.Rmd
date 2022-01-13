@@ -1,0 +1,87 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+"/Users/jpgannon/Library/R/x86_64/4.1/library/whitebox/WBT/whitebox_tools "
+```{r}
+library(tidyverse)
+library(tmap)
+library(raster)
+library(whitebox)
+install_whitebox()
+wbt_init()
+```
+Prep DEM
+
+Feature preserving smooth
+Fill single cell pits
+Breach larger depressions
+
+```{r}
+#dem <- raster("hydem1m.tif/hydem1m.tif")
+
+wbt_feature_preserving_smoothing(
+  dem = "hydem1m.tif/hydem1m.tif",
+  output = "hydem1m_smooth.tif",
+  filter = 5,
+  norm_diff = 15,
+  num_iter = 3,
+  max_diff = 0.5)
+
+wbt_fill_single_cell_pits(
+  dem = "hydem1m_smooth.tif",
+  output = "hydem1m_smooth_filled.tif")
+
+wbt_breach_depressions_least_cost(
+  dem = "hydem1m_smooth_filled.tif",
+  output = "hydem1m_smooth_filled_breached.tif",
+  dist = 5,
+  fill = TRUE)
+
+wbt_hillshade(
+  dem = "hydem1m_smooth_filled_breached.tif",
+  output = "hydem1m_prepped_hillshade.tif")
+```
+Look at hillshade of prepped DEM
+```{r}
+hillshade <- raster("hydem1m_prepped_hillshade.tif")
+
+tmap_mode("view")
+tm_shape(hillshade)+
+  tm_raster(style = "cont",palette = "-Greys", legend.show = FALSE)+
+  tm_scale_bar()
+```
+
+Original topo metrics
+        TPI 100
+        TWId
+        EDb
+        Uaab
+  New metrics moving forward in Whitebox or RSAGA
+        Max slope (1m)
+        TPI 20, 100, 500 (SAGA, 5m)
+        Multi-resolution valley bottom (MRVB; SAGA; 5m)
+        TWId (GRASS, raster calculator; 5m)
+            Feature preserving filter DEM (GRASS)
+            Ln(UAA)/tan(downslope index 5m distance) SAGA
+
+TPI 100
+https://www.whiteboxgeo.com/manual/wbt_book/available_tools/geomorphometric_analysis.html?highlight=topographic%20position#relativetopographicposition
+
+filter size is in # of cells
+```{r}
+wbt_relative_topographic_position(
+  dem = "hydem1m_smooth_filled_breached.tif", 
+  output = "tpi100m.tif", 
+  filterx = 100, 
+  filtery = 100)
+
+tpi100 <- raster("tpi100m.tif")
+
+tmap_mode("view")
+tm_shape(tpi100)+
+  tm_raster(style = "cont",palette = "-Greys", legend.show = FALSE)+
+  tm_scale_bar()
+
+```
+

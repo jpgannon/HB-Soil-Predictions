@@ -13,6 +13,7 @@ library(tmap)
 library(terra) #the raster package is going away, switching to terra
 library(whitebox)
 library(RSAGA)
+library(sf)
 
 #install_whitebox()
 wbt_init()
@@ -20,7 +21,7 @@ wbt_init()
 Whitebox tools manual: https://www.whiteboxgeo.com/manual/wbt_book/intro.html
 RSAGA: https://cran.r-project.org/web/packages/RSAGA/RSAGA.pdf
 
-Prep DEM
+Prep DEM for hydro related metrics and make 5m regular dem
 
 Feature preserving smooth
 Fill single cell pits
@@ -89,11 +90,18 @@ New metrics moving forward in Whitebox or RSAGA
             Ln(UAA)/tan(downslope index 5m distance) SAGA
         #downslope unsaturated flowpath with WBT free trial (1m, 5m, smooth/not)
 
-TPI 100
+TPI
 https://www.whiteboxgeo.com/manual/wbt_book/available_tools/geomorphometric_analysis.html?highlight=topographic%20position#relativetopographicposition
 
-filter size is in # of cells
+
 ```{r}
+#TPI 20
+wbt_dev_from_mean_elev(
+  dem = "dem_5m_aggregated.tif", 
+  output = "tpi20m.tif", 
+  filterx = 20, 
+  filtery = 20)
+
 #TPI 100
 wbt_dev_from_mean_elev(
   dem = "dem_5m_aggregated.tif", 
@@ -101,15 +109,28 @@ wbt_dev_from_mean_elev(
   filterx = 100, 
   filtery = 100)
 
+#TPI 500
+wbt_dev_from_mean_elev(
+  dem = "dem_5m_aggregated.tif", 
+  output = "tpi500m.tif", 
+  filterx = 500, 
+  filtery = 500)
+
 #slope from unprocessed 1m DEM
 wbt_slope(
   dem = "dem1m/dem1m.tif", 
   output = "slope.tif")
 
-#log d8 flow accumulation
-wbt_fd8_flow_accumulation(
+#aggragate slope to 5m
+rast("slope.tif") %>%
+  terra::aggregate(filename = "slope_5m_aggregated.tif",
+                   fact = 5,
+                   fun = "mean") %>%
+
+#log md inf (Seibert & McGlynn 07) flow accumulation
+wbt_md_inf_flow_accumulation(
   dem = "hydem5m_smooth_filled_breached.tif",
-  output = "hydem5m_d8fa.tif",
+  output = "hydem5m_mdinf_fa.tif",
   out_type = 'catchment area',
   log = TRUE
 )
@@ -118,14 +139,15 @@ wbt_fd8_flow_accumulation(
 wbt_downslope_index(
   dem = "hydem5m_smooth_filled_breached.tif",
   output= "hydem5m_downslope_index.tif",
+  drop = 5,
   out_type = 'tangent'
 )
 
 #read flow accumulation and downslope index for raster calc operation
-d8fa <- rast("hydem5m_d8fa.tif")
+d8fa <- rast("hydem5m_mdinf_fa.tif")
 tan_ds_index <- rast("hydem5m_downslope_index.tif")
 
-#divide log flow accumulation by tangend of downslope index
+#divide log flow accumulation by tangent of downslope index
 TWId <- d8fa / tan_ds_index
 
 #output TWId to file
@@ -186,12 +208,10 @@ Update Views: true
 Classify: false
 Maximum Resolution (Percentage): 100
 ```{r}
+#tell R where saga is
 sagaenv <- rsaga.env("//Mac/Home/Documents/saga-8.1.1_x64/saga-8.1.1_x64")
 
-#rsaga.import.gdal(in.grid = "dem_5m_aggregated.tif",
-  #                out.grid = "dem_saga",
-  #            env = sagaenv)
-
+#convert 5m raster to saga file format
 rast("dem_5m_aggregated.tif") %>% 
   terra::writeRaster(filename = "dem_5m_aggregated.sdat",
               filetype = "SAGA")
@@ -203,15 +223,18 @@ rsaga.get.modules(libs = "ta_morphometry",
 #                module = "Multiresolution Index of Valley Bottom Flatness (MRVBF)", 
 #                env = sagaenv)
 
+#set parameters for mrvbf run (additional available are above this chunk)
 params = list(DEM = "dem_5m_aggregated.sgrd",
               MRVBF = "mrvbf.sdat",
               MRRTF = "mrrtf.sdat")
 
+#run mrvbf using parameters aboge
 rsaga.geoprocessor(lib = "ta_morphometry", 
                    module = "Multiresolution Index of Valley Bottom Flatness (MRVBF)", 
                    param = params,
                    env = sagaenv)
 
+#read in the result of above, assive projection, write back out projected
 mrvbf <- rast("mrvbf.sdat")
 crs(mrvbf) <- "epsg:26919"
 writeRaster(mrvbf, "mrvbf_projected.tif")
@@ -226,4 +249,67 @@ tm_shape(toview)+
   tm_raster(style = "cont", legend.show = FALSE)+
   tm_scale_bar()
 ```
+
+The code below reads in the coverages generated above, stacks them into one big multi layer grid, and then extracts the values form each at the point locations of soil observations
+
+```{r}
+#read 5 m rasters
+all_layers <- rast(c(
+  "slope_5m_aggregated.tif",
+  "dem_5m_aggregated.tif",
+  "hydem5m_TWId.tif",
+  "mrvbf_projected.tif",
+  "tpi20m.tif",
+  "tpi100m.tif",
+  "tpi500m.tif"
+))
+
+#read 1 m rasters
+slope1m <- rast("slope.tif")
+
+#read point shapefile
+observation_locations <- vect("HBEF_NEW_biscuit_Pedon/HBEF_NEW_biscuit_Pedon.shp")
+
+#extract values at points from 5m raster layers, drop ID and rename slope bc those exist already in the imported shapefile
+raster_values <- extract(x = all_layers, #raster 
+                  y = observation_locations, #points
+                  method = "simple") %>%
+                select(-ID) %>%
+                dplyr::rename(slope5m = slope)
+
+#have to extract 1 m slope separately bc of different resolution
+slope_1m_values <- extract(x = slope1m, #raster 
+                  y = observation_locations, #points
+                  method = "simple")
+
+#add extracted values to shapefile
+observation_locations <- cbind(observation_locations, raster_values, slope_1m_values)
+
+#write a new shapefile with extracted values
+writeVector(observation_locations,
+            "HBEF_NEW_biscuit_Pedon/HBEF_NEW_biscuit_Pedon_extracted_values.shp",
+            filetype = "ESRI Shapefile")
+
+#export csv of extracted values
+as_tibble(observation_locations) %>%
+  write_csv("biscuit_pedon_extracted_values.csv")
+```
+
+Create spatialpixelsdataframe
+```{r}
+library(raster)
+
+  slope <- raster("slope_5m_aggregated.tif")
+  dem <- raster("dem_5m_aggregated.tif")
+  twid <- raster("hydem5m_TWId.tif")
+  mrvbf <- raster("mrvbf_projected.tif")
+  tpi20 <- raster("tpi20m.tif")
+  tpi100 <- raster("tpi100m.tif")
+  tpi500 <- raster("tpi500m.tif")
+  
+all_layers_raster <- stack(slope, dem, twid, mrvbf, tpi20, tpi100, tpi500)
+
+spdf_all_layers <- as(all_layers_raster, "SpatialPixelsDataFrame")
+```
+
 

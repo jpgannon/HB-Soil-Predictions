@@ -1,9 +1,13 @@
 ---
 title: "R Notebook"
 output: html_notebook
+editor_options: 
+  markdown: 
+    wrap: 72
 ---
 
-If you opened this rmd directly, the file paths will not work, be sure you opened the .rproj file and then opened the this rmd within rstudio
+If you opened this rmd directly, the file paths will not work, be sure
+you opened the .rproj file and then opened the this rmd within rstudio
 
 Leave coverages in current folders or code won't work!
 
@@ -11,6 +15,7 @@ Leave coverages in current folders or code won't work!
 library(tidyverse)
 library(tmap)
 library(terra) #the raster package is going away, switching to terra
+library(raster)
 library(whitebox)
 library(RSAGA)
 library(sf)
@@ -18,195 +23,182 @@ library(sf)
 #install_whitebox()
 wbt_init()
 ```
-Whitebox tools manual: https://www.whiteboxgeo.com/manual/wbt_book/intro.html
-RSAGA: https://cran.r-project.org/web/packages/RSAGA/RSAGA.pdf
+
+Whitebox tools manual:
+<https://www.whiteboxgeo.com/manual/wbt_book/intro.html> RSAGA:
+<https://cran.r-project.org/web/packages/RSAGA/RSAGA.pdf>
 
 Prep DEM for hydro related metrics and make 5m regular dem
 
-Feature preserving smooth
-Fill single cell pits
-Breach larger depressions
+Feature preserving smooth Fill single cell pits Breach larger
+depressions
 
 ```{r}
-#read regular and hydro prepped 1m DEMs
-dem <- rast("dem1m/dem1m.tif")
-hydrodem <- rast("hydem1m.tif/hydem1m.tif")
+#Aggregate 1 m DEM to 5 m
+wbt_aggregate_raster(
+  input = "knb-lter-hbr.211.2/dem1m.tif",
+  output = "dem5m_noproj.tif",
+  agg_factor = 5
+  )
 
-#generate 5m dem
-terra::aggregate(dem,
-                 filename = "dem_5m_aggregated.tif",
-                 fact = 5,
-                 fun = "mean")
+temp <- rast("dem5m_noproj.tif")
+crs(temp) <- "epsg:26919"
+writeRaster(temp, 
+           "dem5m.tif",
+           overwrite = TRUE)
 
-#generate hydro prepped using hydem1m
-terra::aggregate(hydrodem,
-                 filename = "hydrodem_5m_aggregated.tif",
-                 fact = 5,
-                 fun = "mean")
+#this strips the projection
+#must add the projection back after
+#calculating downslope index
+#downslope index tool does not like 
+#rasters output by terra functions
+wbt_aggregate_raster(
+  input = "knb-lter-hbr.211.2/hydem1mlpns.tif",
+  output = "hydem5m.tif",
+  agg_factor = 5
+  )
 
+#smooth 5m DEM
 wbt_feature_preserving_smoothing(
-  dem ="hydrodem_5m_aggregated.tif",
+  dem = "hydem5m.tif",
   output = "hydem5m_smooth.tif",
-  filter = 5,
+  filter = 11,
   norm_diff = 15,
   num_iter = 3,
   max_diff = 0.5)
 
-wbt_fill_single_cell_pits(
-  dem = "hydem5m_smooth.tif",
-  output = "hydem5m_smooth_filled.tif")
-
+#breach depressions
 wbt_breach_depressions_least_cost(
-  dem = "hydem5m_smooth_filled.tif",
-  output = "hydem5m_smooth_filled_breached.tif",
-  dist = 5,
-  fill = TRUE)
+  dem = "hydem5m_smooth.tif",
+  output = "hydem5m_smooth_breached.tif",
+  dist = 100,
+  flat_increment = 0.01)
 
-wbt_hillshade(
-  dem = "hydem5m_smooth_filled_breached.tif",
-  output = "hydem5m_prepped_hillshade.tif")
+#fill remaining depressions
+#there is a bug in the above function
+#that leaves some depressions, 
+#this fixes that
+wbt_fill_depressions_wang_and_liu(
+  dem = "hydem5m_smooth_breached.tif",
+  output = "hydem5m_smooth_breached_filled.tif"
+)
+
 ```
-Look at hillshade of hydro prepped DEM
+
+Code used to check on DEMs generated above
 ```{r}
+wbt_hillshade(
+  dem = "hydem5m_smooth_filled_breached2.tif",
+  output = "hydem5m_prepped_hillshade.tif")
+
 hillshade <- rast("hydem5m_prepped_hillshade.tif")
 
-tmap_mode("view")
+tmap_mode("plot")
 tm_shape(hillshade)+
   tm_raster(style = "cont",palette = "-Greys", legend.show = FALSE)+
   tm_scale_bar()
 ```
 
-Original topo metrics (Gillin et al 2015)
-        TPI 100
-        TWId
-        EDb
-        Uaab
-New metrics moving forward in Whitebox or RSAGA
-        Max slope (1m) (use 1m DEM)
-        TPI 20, 100, 500 (SAGA, DevFromMeanElev in WBT?) (5m but not smoothed) 
-        Multi-resolution valley bottom (MRVB; SAGA; 5m not smoothed)
-        TWId (GRASS, raster calculator; 5m, hydro prepped)
-            Feature preserving filter DEM (GRASS)
-            Ln(UAA)/tan(downslope index 5m distance) SAGA
-        #downslope unsaturated flowpath with WBT free trial (1m, 5m, smooth/not)
+Original topo metrics (Gillin et al 2015) TPI 100 TWId EDb Uaab New
+metrics moving forward in Whitebox or RSAGA Max slope (1m) (use 1m DEM)
+TPI 20, 100, 500 (SAGA, DevFromMeanElev in WBT?) (5m but not smoothed)
+Multi-resolution valley bottom (MRVB; SAGA; 5m not smoothed) TWId
+(GRASS, raster calculator; 5m, hydro prepped) Feature preserving filter
+DEM (GRASS) Ln(UAA/tan(downslope index 5m distance))? SAGA \#downslope
+unsaturated flowpath with WBT free trial (1m, 5m, smooth/not)
 
 TPI
-https://www.whiteboxgeo.com/manual/wbt_book/available_tools/geomorphometric_analysis.html?highlight=topographic%20position#relativetopographicposition
-
+<https://www.whiteboxgeo.com/manual/wbt_book/available_tools/geomorphometric_analysis.html?highlight=topographic%20position#relativetopographicposition>
 
 ```{r}
 #TPI 20
 wbt_dev_from_mean_elev(
-  dem = "dem_5m_aggregated.tif", 
+  dem = "dem5m.tif", 
   output = "tpi20m.tif", 
   filterx = 20, 
   filtery = 20)
 
 #TPI 100
 wbt_dev_from_mean_elev(
-  dem = "dem_5m_aggregated.tif", 
+  dem = "dem5m.tif", 
   output = "tpi100m.tif", 
   filterx = 100, 
   filtery = 100)
 
 #TPI 500
 wbt_dev_from_mean_elev(
-  dem = "dem_5m_aggregated.tif", 
+  dem = "dem5m.tif", 
   output = "tpi500m.tif", 
   filterx = 500, 
   filtery = 500)
 
 #slope from unprocessed 1m DEM
 wbt_slope(
-  dem = "dem1m/dem1m.tif", 
+  dem = "knb-lter-hbr.211.2/dem1m.tif", 
   output = "slope.tif")
 
-#aggragate slope to 5m
-rast("slope.tif") %>%
-  terra::aggregate(filename = "slope_5m_aggregated.tif",
-                   fact = 5,
-                   fun = "mean") %>%
+#aggregate slope to 5m
+wbt_aggregate_raster(
+  input = "slope.tif",
+  output = "slope5m.tif",
+  agg_factor = 5
+  )
 
 #log md inf (Seibert & McGlynn 07) flow accumulation
+#1.65 seconds
 wbt_md_inf_flow_accumulation(
-  dem = "hydem5m_smooth_filled_breached.tif",
+  dem = "hydem5m_smooth_breached_filled.tif",
   output = "hydem5m_mdinf_fa.tif",
-  out_type = 'catchment area',
-  log = TRUE
+  out_type = "specific contributing area"
 )
 
 #tangent downslope index
 wbt_downslope_index(
-  dem = "hydem5m_smooth_filled_breached.tif",
+  dem = "hydem5m_smooth_breached_filled.tif",
   output= "hydem5m_downslope_index.tif",
   drop = 5,
-  out_type = 'tangent'
+  out_type = "tangent"
 )
 
 #read flow accumulation and downslope index for raster calc operation
-d8fa <- rast("hydem5m_mdinf_fa.tif")
-tan_ds_index <- rast("hydem5m_downslope_index.tif")
+mdinf <- rast("hydem5m_mdinf_fa.tif")
+tan_ds_index <- rast( "hydem5m_downslope_index.tif")
 
 #divide log flow accumulation by tangent of downslope index
-TWId <- d8fa / tan_ds_index
+TWId <- base::log(mdinf / tan_ds_index)
+crs(TWId) <- "epsg:26919"
 
 #output TWId to file
-writeRaster(TWId, "hydem5m_TWId.tif")
+writeRaster(TWId, "hydem5m_TWId.tif", overwrite = TRUE)
 ```
-MRVB
-To run this you have to link to a SAGA installation on your computer. See more here: https://geocompr.robinlovelace.net/gis.html?q=saga#rsaga
 
-Usage: saga_cmd ta_morphometry 8 [-DEM <str>] [-MRVBF <str>] [-MRRTF <str>] [-T_SLOPE <double>] [-T_PCTL_V <double>] [-T_PCTL_R <double>] [-P_SLOPE <double>] [-P_PCTL <double>] [-UPDATE <str>] [-CLASSIFY <str>] [-MAX_RES <double>]
-  -DEM:<str>        	Elevation
-	Grid, input
-  -MRVBF:<str>      	MRVBF
-	Grid, output
-  -MRRTF:<str>      	MRRTF
-	Grid, output
-  -T_SLOPE:<double> 	Initial Threshold for Slope
-	Floating point
-	Minimum: 0.000000
-	Maximum: 100.000000
-	Default: 16.000000
-  -T_PCTL_V:<double>	Threshold for Elevation Percentile (Lowness)
-	Floating point
-	Minimum: 0.000000
-	Maximum: 1.000000
-	Default: 0.400000
-  -T_PCTL_R:<double>	Threshold for Elevation Percentile (Upness)
-	Floating point
-	Minimum: 0.000000
-	Maximum: 1.000000
-	Default: 0.350000
-  -P_SLOPE:<double> 	Shape Parameter for Slope
-	Floating point
-	Default: 4.000000
-  -P_PCTL:<double>  	Shape Parameter for Elevation Percentile
-	Floating point
-	Default: 3.000000
-  -UPDATE:<str>     	Update Views
-	Boolean
-	Default: 1
-  -CLASSIFY:<str>   	Classify
-	Boolean
-	Default: 0
-  -MAX_RES:<double> 	Maximum Resolution (Percentage)
-	Floating point
-	Minimum: 0.000000
-	Maximum: 100.000000
-	
-Default values for MRVBF run:
-Elevation: dem_saga
-MRVBF: MRVBF
-MRRTF: MRRTF
-Initial Threshold for Slope: 16
-Threshold for Elevation Percentile (Lowness): 0.4
-Threshold for Elevation Percentile (Upness): 0.35
-Shape Parameter for Slope: 4
-Shape Parameter for Elevation Percentile: 3
-Update Views: true
-Classify: false
-Maximum Resolution (Percentage): 100
+MRVB To run this you have to link to a SAGA installation on your
+computer. See more here:
+<https://geocompr.robinlovelace.net/gis.html?q=saga#rsaga>
+
+Usage: saga_cmd ta_morphometry 8 [-DEM <str>] [-MRVBF <str>] [-MRRTF
+<str>] [-T_SLOPE <double>] [-T_PCTL_V <double>] [-T_PCTL_R <double>]
+[-P_SLOPE <double>] [-P_PCTL <double>] [-UPDATE <str>] [-CLASSIFY <str>]
+[-MAX_RES <double>] -DEM:<str> Elevation Grid, input -MRVBF:<str> MRVBF
+Grid, output -MRRTF:<str> MRRTF Grid, output -T_SLOPE:<double> Initial
+Threshold for Slope Floating point Minimum: 0.000000 Maximum: 100.000000
+Default: 16.000000 -T_PCTL_V:<double> Threshold for Elevation Percentile
+(Lowness) Floating point Minimum: 0.000000 Maximum: 1.000000 Default:
+0.400000 -T_PCTL_R:<double> Threshold for Elevation Percentile (Upness)
+Floating point Minimum: 0.000000 Maximum: 1.000000 Default: 0.350000
+-P_SLOPE:<double> Shape Parameter for Slope Floating point Default:
+4.000000 -P_PCTL:<double> Shape Parameter for Elevation Percentile
+Floating point Default: 3.000000 -UPDATE:<str> Update Views Boolean
+Default: 1 -CLASSIFY:<str> Classify Boolean Default: 0 -MAX_RES:<double>
+Maximum Resolution (Percentage) Floating point Minimum: 0.000000
+Maximum: 100.000000
+
+Default values for MRVBF run: Elevation: dem_saga MRVBF: MRVBF MRRTF:
+MRRTF Initial Threshold for Slope: 16 Threshold for Elevation Percentile
+(Lowness): 0.4 Threshold for Elevation Percentile (Upness): 0.35 Shape
+Parameter for Slope: 4 Shape Parameter for Elevation Percentile: 3
+Update Views: true Classify: false Maximum Resolution (Percentage): 100
+
 ```{r}
 #tell R where saga is
 sagaenv <- rsaga.env("//Mac/Home/Documents/saga-8.1.1_x64/saga-8.1.1_x64")
@@ -240,17 +232,9 @@ crs(mrvbf) <- "epsg:26919"
 writeRaster(mrvbf, "mrvbf_projected.tif")
 ```
 
-look at outputs
-```{r}
-toview <- raster("tpi100m.tif")
-
-tmap_mode("view")
-tm_shape(toview)+
-  tm_raster(style = "cont", legend.show = FALSE)+
-  tm_scale_bar()
-```
-
-The code below reads in the coverages generated above, stacks them into one big multi layer grid, and then extracts the values form each at the point locations of soil observations
+The code below reads in the coverages generated above, stacks them into
+one big multi layer grid, and then extracts the values form each at the
+point locations of soil observations
 
 ```{r}
 #read 5 m rasters
@@ -296,6 +280,7 @@ as_tibble(observation_locations) %>%
 ```
 
 Create spatialpixelsdataframe
+
 ```{r}
 library(raster)
 
@@ -311,5 +296,3 @@ all_layers_raster <- stack(slope, dem, twid, mrvbf, tpi20, tpi100, tpi500)
 
 spdf_all_layers <- as(all_layers_raster, "SpatialPixelsDataFrame")
 ```
-
-

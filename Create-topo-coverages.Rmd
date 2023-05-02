@@ -34,18 +34,32 @@ Feature preserving smooth Fill single cell pits Breach larger
 depressions
 
 ```{r}
+#originaldem <- "knb-lter-hbr.211.2/dem1m.tif"
+#hydro_prepped_orig_dem <- "knb-lter-hbr.211.2/hydem1mlpns.tif"
+
+#data_dir <- "ConePond/"
+#originaldem <- "cnp1mdem.tif"
+#hydro_prepped_orig_dem <- "cnp1mdem.tif"
+
+data_dir <- "BlackPond/"
+originaldem <- "bk1mdem.tif"
+hydro_prepped_orig_dem <- "bk1mdem.tif"
+epsg_orig <- "epsg:26919"
+
+
+
 #Aggregate 1 m DEM to 5 m
 wbt_aggregate_raster(
-  input = "knb-lter-hbr.211.2/dem1m.tif",
-  output = "dem5m_noproj.tif",
+  input = paste0(data_dir, originaldem),
+  output = paste0(data_dir, "dem5m_noproj.tif"),
   agg_factor = 5
   )
 
 #aggregate strips the projection, this adds it back in
-temp <- rast("dem5m_noproj.tif")
-crs(temp) <- "epsg:26919"
+temp <- rast(paste0(data_dir, "dem5m_noproj.tif"))
+crs(temp) <- epsg_orig
 writeRaster(temp, 
-           "dem5m.tif",
+           paste0(data_dir, "dem5m.tif"),
            overwrite = TRUE)
 
 #this strips the projection
@@ -54,15 +68,15 @@ writeRaster(temp,
 #downslope index tool does not like 
 #rasters output by terra functions
 wbt_aggregate_raster(
-  input = "knb-lter-hbr.211.2/hydem1mlpns.tif",
-  output = "hydem5m.tif",
+  input = paste0(data_dir, hydro_prepped_orig_dem),
+  output = paste0(data_dir, "hydem5m.tif"),
   agg_factor = 5
   )
 
 #smooth 5m DEM
 wbt_feature_preserving_smoothing(
-  dem = "hydem5m.tif",
-  output = "hydem5m_smooth.tif",
+  dem = paste0(data_dir, "hydem5m.tif"),
+  output = paste0(data_dir, "hydem5m_smooth.tif"),
   filter = 11,
   norm_diff = 15,
   num_iter = 3,
@@ -70,8 +84,8 @@ wbt_feature_preserving_smoothing(
 
 #breach depressions
 wbt_breach_depressions_least_cost(
-  dem = "hydem5m_smooth.tif",
-  output = "hydem5m_smooth_breached.tif",
+  dem = paste0(data_dir, "hydem5m_smooth.tif"),
+  output = paste0(data_dir, "hydem5m_smooth_breached.tif"),
   dist = 100,
   flat_increment = 0.01)
 
@@ -80,8 +94,8 @@ wbt_breach_depressions_least_cost(
 #function that leaves some depressions, 
 #this fixes that
 wbt_fill_depressions_wang_and_liu(
-  dem = "hydem5m_smooth_breached.tif",
-  output = "hydem5m_smooth_breached_filled.tif"
+  dem = paste0(data_dir, "hydem5m_smooth_breached.tif"),
+  output = paste0(data_dir, "hydem5m_smooth_breached_filled.tif")
 )
 
 ```
@@ -89,10 +103,10 @@ wbt_fill_depressions_wang_and_liu(
 Code used to check on DEMs generated above
 ```{r}
 wbt_hillshade(
-  dem = "hydem5m_smooth_filled_breached2.tif",
-  output = "hydem5m_prepped_hillshade.tif")
+  dem = paste0(data_dir, "hydem5m_smooth_breached_filled.tif"),
+  output = paste0(data_dir, "hydem5m_prepped_hillshade.tif"))
 
-hillshade <- rast("hydem5m_prepped_hillshade.tif")
+hillshade <- rast(paste0(data_dir, "hydem5m_prepped_hillshade.tif"))
 
 tmap_mode("plot")
 tm_shape(hillshade)+
@@ -116,91 +130,105 @@ TPI
 #filter x and y dimensions below are in cells
 #4 cells = 20 meters
 wbt_dev_from_mean_elev(
-  dem = "dem5m.tif", 
-  output = "tpi20m.tif", 
+  dem = paste0(data_dir, "dem5m.tif"), 
+  output = paste0(data_dir, "tpi15m.tif"), 
+  filterx = 3, 
+  filtery = 3)
+
+#TPI20
+wbt_dev_from_mean_elev(
+  dem = paste0(data_dir, "dem5m.tif"), 
+  output = paste0(data_dir, "tpi20m.tif"), 
   filterx = 4, 
   filtery = 4)
 
 #TPI 100
 wbt_dev_from_mean_elev(
-  dem = "dem5m.tif", 
-  output = "tpi100m.tif", 
+  dem = paste0(data_dir, "dem5m.tif"), 
+  output = paste0(data_dir, "tpi100m.tif"), 
   filterx = 20, 
   filtery = 20)
 
+#TPI 250
+wbt_dev_from_mean_elev(
+  dem = paste0(data_dir, "dem5m.tif"), 
+  output = paste0(data_dir, "tpi250m.tif"), 
+  filterx = 50, 
+  filtery = 50)
+
 #TPI 500
 wbt_dev_from_mean_elev(
-  dem = "dem5m.tif", 
-  output = "tpi500m.tif", 
+  dem = paste0(data_dir, "dem5m.tif"), 
+  output = paste0(data_dir, "tpi500m.tif"), 
   filterx = 100, 
   filtery = 100)
 
 #TPI 1000
 wbt_dev_from_mean_elev(
-  dem = "dem5m.tif", 
-  output = "tpi1000m.tif", 
+  dem = paste0(data_dir, "dem5m.tif"), 
+  output = paste0(data_dir, "tpi1000m.tif"), 
   filterx = 200, 
   filtery = 200)
 
 #TPI 1500
 wbt_dev_from_mean_elev(
-  dem = "dem5m.tif", 
-  output = "tpi1500m.tif", 
+  dem = paste0(data_dir, "dem5m.tif"), 
+  output = paste0(data_dir, "tpi1500m.tif"), 
   filterx = 300, 
   filtery = 300)
 
 #TPI 2000
 wbt_dev_from_mean_elev(
-  dem = "dem5m.tif", 
-  output = "tpi2000m.tif", 
+  dem = paste0(data_dir, "dem5m.tif"), 
+  output = paste0(data_dir, "tpi2000m.tif"), 
   filterx = 400, 
   filtery = 400)
 
 #slope from unprocessed 1m DEM
 wbt_slope(
-  dem = "knb-lter-hbr.211.2/dem1m.tif", 
-  output = "slope.tif")
+  dem = paste0(data_dir, originaldem), 
+  output = paste0(data_dir, "slope.tif"))
 
 #aggregate slope to 5m
 wbt_aggregate_raster(
-  input = "slope.tif",
-  output = "slope5m_noproj.tif",
+  input = paste0(data_dir, "slope.tif"),
+  output = paste0(data_dir, "slope5m_noproj.tif"),
   agg_factor = 5
   )
 
 #add projection to aggregated slope
-temp <- rast("slope5m_noproj.tif")
-crs(temp) <- "epsg:26919"
+temp <- rast(paste0(data_dir, "slope5m_noproj.tif"))
+crs(temp) <- epsg_orig
 writeRaster(temp, 
-           "slope5m.tif",
+           paste0(data_dir, "slope5m.tif"),
            overwrite = TRUE)
 
 #log md inf (Seibert & McGlynn 07) flow accumulation
 #1.65 seconds
 wbt_md_inf_flow_accumulation(
-  dem = "hydem5m_smooth_breached_filled.tif",
-  output = "hydem5m_mdinf_fa.tif",
+  dem = paste0(data_dir, "hydem5m_smooth_breached_filled.tif"),
+  output = paste0(data_dir, "hydem5m_mdinf_fa.tif"),
   out_type = "specific contributing area"
 )
 
 #tangent downslope index
 wbt_downslope_index(
-  dem = "hydem5m_smooth_breached_filled.tif",
-  output= "hydem5m_downslope_index.tif",
+  dem = paste0(data_dir, "hydem5m_smooth_breached_filled.tif"),
+  output= paste0(data_dir, "hydem5m_downslope_index.tif"),
   drop = 5,
   out_type = "tangent"
 )
 
 #read flow accumulation and downslope index for raster calc operation
-mdinf <- rast("hydem5m_mdinf_fa.tif")
-tan_ds_index <- rast( "hydem5m_downslope_index.tif")
+mdinf <- rast(paste0(data_dir, "hydem5m_mdinf_fa.tif"))
+tan_ds_index <- rast(paste0(data_dir, "hydem5m_downslope_index.tif"))
 
 #divide log flow accumulation by tangent of downslope index
 TWId <- base::log(mdinf / tan_ds_index)
-crs(TWId) <- "epsg:26919"
+crs(TWId) <- epsg_orig
 
 #output TWId to file
-writeRaster(TWId, "hydem5m_TWId.tif", overwrite = TRUE)
+writeRaster(TWId, paste0(data_dir, "hydem5m_TWId.tif"), overwrite = TRUE)
 ```
 
 MRVB To run this you have to link to a SAGA installation on your
@@ -235,8 +263,8 @@ Update Views: true Classify: false Maximum Resolution (Percentage): 100
 sagaenv <- rsaga.env("//Mac/Home/Documents/saga-8.1.1_x64/saga-8.1.1_x64")
 
 #convert 5m raster to saga file format
-rast("dem5m.tif") %>% 
-  terra::writeRaster(filename = "dem5m.sdat",
+rast(paste0(data_dir, "dem5m.tif")) %>% 
+  terra::writeRaster(filename = paste0(data_dir, "dem5m.sdat"),
               filetype = "SAGA")
 
 rsaga.get.modules(libs = "ta_morphometry",
@@ -247,20 +275,20 @@ rsaga.get.modules(libs = "ta_morphometry",
 #                env = sagaenv)
 
 #set parameters for mrvbf run (additional available are above this chunk)
-params = list(DEM = "dem5m.sgrd",
-              MRVBF = "mrvbf.sdat",
-              MRRTF = "mrrtf.sdat")
+params = list(DEM = paste0(data_dir, "dem5m.sgrd"),
+              MRVBF = paste0(data_dir, "mrvbf.sdat"),
+              MRRTF = paste0(data_dir, "mrrtf.sdat"))
 
-#run mrvbf using parameters aboge
+#run mrvbf using parameters above
 rsaga.geoprocessor(lib = "ta_morphometry", 
                    module = "Multiresolution Index of Valley Bottom Flatness (MRVBF)", 
                    param = params,
                    env = sagaenv)
 
 #read in the result of above, assive projection, write back out projected
-mrvbf <- rast("mrvbf.sdat")
+mrvbf <- rast(paste0(data_dir, "mrvbf.sdat"))
 crs(mrvbf) <- "epsg:26919"
-writeRaster(mrvbf, "mrvbf_projected.tif", overwrite = TRUE)
+writeRaster(mrvbf, paste0(data_dir, "mrvbf_projected.tif"), overwrite = TRUE)
 ```
 
 The code below reads in the coverages generated above, stacks them into
@@ -270,17 +298,17 @@ point locations of soil observations
 ```{r}
 #read 5 m rasters
 all_layers <- rast(c(
-  "slope5m.tif",
-  "dem5m.tif",
-  "hydem5m_TWId.tif",
-  "mrvbf_projected.tif",
-  "tpi20m.tif",
-  "tpi100m.tif",
-  "tpi500m.tif"
+  paste0(data_dir, "slope5m.tif"),
+  paste0(data_dir, "dem5m.tif"),
+  paste0(data_dir, "hydem5m_TWId.tif"),
+  paste0(data_dir, "mrvbf_projected.tif"),
+  paste0(data_dir, "tpi20m.tif"),
+  paste0(data_dir,  "tpi100m.tif"),
+  paste0(data_dir, "tpi500m.tif")
 ))
 
 #read 1 m rasters
-slope1m <- rast("slope.tif")
+slope1m <- rast(paste0(data_dir, "slope.tif"))
 
 #read point shapefile
 observation_locations <- vect("HBEF_NEW_biscuit_Pedon/HBEF_NEW_biscuit_Pedon.shp")
@@ -316,13 +344,13 @@ Create spatialpixelsdataframe
 ```{r}
 library(raster)
 
-  slope <- raster("slope_5m_aggregated.tif")
-  dem <- raster("dem_5m_aggregated.tif")
-  twid <- raster("hydem5m_TWId.tif")
-  mrvbf <- raster("mrvbf_projected.tif")
-  tpi20 <- raster("tpi20m.tif")
-  tpi100 <- raster("tpi100m.tif")
-  tpi500 <- raster("tpi500m.tif")
+  slope <- raster(paste0(data_dir, "slope_5m_aggregated.tif"))
+  dem <- raster(paste0(data_dir, "dem_5m_aggregated.tif"))
+  twid <- raster(paste0(data_dir, "hydem5m_TWId.tif"))
+  mrvbf <- raster(paste0(data_dir, "mrvbf_projected.tif"))
+  tpi20 <- raster(paste0(data_dir, "tpi20m.tif"))
+  tpi100 <- raster(paste0(data_dir, "tpi100m.tif"))
+  tpi500 <- raster(paste0(data_dir, "tpi500m.tif"))
   
 all_layers_raster <- stack(slope, dem, twid, mrvbf, tpi20, tpi100, tpi500)
 

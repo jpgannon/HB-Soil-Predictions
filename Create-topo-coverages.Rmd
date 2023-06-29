@@ -19,6 +19,7 @@ library(raster)
 library(whitebox)
 library(RSAGA)
 library(sf)
+library(caret)
 
 #install_whitebox()
 wbt_init()
@@ -41,7 +42,7 @@ depressions
 #originaldem <- "cnp1mdem.tif"
 #hydro_prepped_orig_dem <- "cnp1mdem.tif"
 
-data_dir <- "BlackPond/"
+data_dir <- "BlackPond/" #with a / after ie. directory/
 originaldem <- "bk1mdem.tif"
 hydro_prepped_orig_dem <- "bk1mdem.tif"
 epsg_orig <- "epsg:26919"
@@ -149,6 +150,13 @@ wbt_dev_from_mean_elev(
   filterx = 20, 
   filtery = 20)
 
+#TPI 200
+wbt_dev_from_mean_elev(
+  dem = paste0(data_dir, "dem5m.tif"), 
+  output = paste0(data_dir, "tpi200m.tif"), 
+  filterx = 40, 
+  filtery = 40)
+
 #TPI 250
 wbt_dev_from_mean_elev(
   dem = paste0(data_dir, "dem5m.tif"), 
@@ -231,6 +239,26 @@ crs(TWId) <- epsg_orig
 writeRaster(TWId, paste0(data_dir, "hydem5m_TWId.tif"), overwrite = TRUE)
 ```
 
+
+Run BOSS model to predict bedrock
+```{r}
+source("boss.R")
+
+boss(maxslope = raster(paste0(data_dir,"slope5m.tif")),
+     tpi15 = raster(paste0(data_dir,"tpi15m.tif")),
+     tpi200 = raster(paste0(data_dir,"tpi200m.tif")),
+     dir = data_dir)
+
+
+```
+Bedrock weighted UAA
+```{r}
+#euclidian distance from bedrock
+wbt_euclidean_distance(
+      input = paste0(data_dir,"bossBRprediction.tif"),
+      output = paste0(data_dir, "EDb.tif"))
+
+```
 MRVB To run this you have to link to a SAGA installation on your
 computer. See more here:
 <https://geocompr.robinlovelace.net/gis.html?q=saga#rsaga>
@@ -281,78 +309,51 @@ params = list(DEM = paste0(data_dir, "dem5m.sgrd"),
 
 #run mrvbf using parameters above
 rsaga.geoprocessor(lib = "ta_morphometry", 
-                   module = "Multiresolution Index of Valley Bottom Flatness (MRVBF)", 
+                   module = "Multiresolution Index of Valley Bottom Flatness (MRVBF)",
                    param = params,
                    env = sagaenv)
 
-#read in the result of above, assive projection, write back out projected
+#read in the result of above, assign projection, write back out projected
 mrvbf <- rast(paste0(data_dir, "mrvbf.sdat"))
 crs(mrvbf) <- "epsg:26919"
 writeRaster(mrvbf, paste0(data_dir, "mrvbf_projected.tif"), overwrite = TRUE)
 ```
 
-The code below reads in the coverages generated above, stacks them into
-one big multi layer grid, and then extracts the values form each at the
-point locations of soil observations
-
+SAGA for weighted UAAb
+Tool: Flow Accumulation (Top-Down)
 ```{r}
-#read 5 m rasters
-all_layers <- rast(c(
-  paste0(data_dir, "slope5m.tif"),
-  paste0(data_dir, "dem5m.tif"),
-  paste0(data_dir, "hydem5m_TWId.tif"),
-  paste0(data_dir, "mrvbf_projected.tif"),
-  paste0(data_dir, "tpi20m.tif"),
-  paste0(data_dir,  "tpi100m.tif"),
-  paste0(data_dir, "tpi500m.tif")
-))
+#prep BR weight grid by making BR values 10000
+BR <- raster(paste0(data_dir,"bossBRprediction.tif"))
+BR[BR == 1] <- 10000
+writeRaster(BR, paste0(data_dir, "BRweights.tif"), overwrite = TRUE)
+            
+#"saga_cmd ta_hydrology 0"
+#"ta_hydrology"
+#convert bedrock weight raster to saga file format
+rast(paste0(data_dir,"BRweights.tif")) %>% 
+  terra::writeRaster(filename = paste0(data_dir, "bossBR.sdat"),
+              filetype = "SAGA")
 
-#read 1 m rasters
-slope1m <- rast(paste0(data_dir, "slope.tif"))
+rsaga.get.modules(libs = "ta_hydrology",
+                  env = sagaenv)
 
-#read point shapefile
-observation_locations <- vect("HBEF_NEW_biscuit_Pedon/HBEF_NEW_biscuit_Pedon.shp")
+#set parameters (https://saga-gis.sourceforge.io/saga_tool_doc/2.3.0/ta_hydrology_0.html)
+params = list(ELEVATION = paste0(data_dir, "dem5m.sgrd"),
+              WEIGHTS = paste0(data_dir, "BRweights.sdat"),
+              METHOD = 4,
+              FLOW = paste0(data_dir, "UAAb.sdat"))
 
-#extract values at points from 5m raster layers, drop ID and rename slope bc those exist already in the imported shapefile
-raster_values <- extract(x = all_layers, #raster 
-                  y = observation_locations, #points
-                  method = "simple") %>%
-                dplyr::select(-ID) %>%
-                dplyr::rename(slope5m = slope5m_noproj,
-                              dem = dem5m_noproj)
+#run mrvbf using parameters above
+rsaga.geoprocessor(lib = "ta_hydrology", 
+                   module = "Flow Accumulation (Top-Down)",
+                   param = params,
+                   env = sagaenv)
 
-#have to extract 1 m slope separately bc of different resolution
-slope_1m_values <- extract(x = slope1m, #raster 
-                  y = observation_locations, #points
-                  method = "simple")
+#read in the result of above, assign projection, write back out projected
+UAAb <- rast(paste0(data_dir, "UAAb.sdat"))
+crs(UAAb) <- "epsg:26919"
+writeRaster(UAAb, paste0(data_dir, "UAAb.tif"), overwrite = TRUE)
 
-#add extracted values to shapefile
-observation_locations <- cbind(observation_locations, raster_values, slope_1m_values)
 
-#write a new shapefile with extracted values
-writeVector(observation_locations,
-            "HBEF_NEW_biscuit_Pedon/HBEF_NEW_biscuit_Pedon_extracted_values.shp",
-            filetype = "ESRI Shapefile", overwrite = TRUE)
-
-#export csv of extracted values
-as_tibble(observation_locations) %>%
-  write_csv("biscuit_pedon_extracted_values.csv")
 ```
 
-Create spatialpixelsdataframe
-
-```{r}
-library(raster)
-
-  slope <- raster(paste0(data_dir, "slope_5m_aggregated.tif"))
-  dem <- raster(paste0(data_dir, "dem_5m_aggregated.tif"))
-  twid <- raster(paste0(data_dir, "hydem5m_TWId.tif"))
-  mrvbf <- raster(paste0(data_dir, "mrvbf_projected.tif"))
-  tpi20 <- raster(paste0(data_dir, "tpi20m.tif"))
-  tpi100 <- raster(paste0(data_dir, "tpi100m.tif"))
-  tpi500 <- raster(paste0(data_dir, "tpi500m.tif"))
-  
-all_layers_raster <- stack(slope, dem, twid, mrvbf, tpi20, tpi100, tpi500)
-
-spdf_all_layers <- as(all_layers_raster, "SpatialPixelsDataFrame")
-```

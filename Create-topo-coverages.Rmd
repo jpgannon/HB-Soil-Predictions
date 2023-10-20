@@ -42,11 +42,15 @@ depressions
 #originaldem <- "cnp1mdem.tif"
 #hydro_prepped_orig_dem <- "cnp1mdem.tif"
 
-data_dir <- "BlackPond/" #with a / after ie. directory/
-originaldem <- "bk1mdem.tif"
-hydro_prepped_orig_dem <- "bk1mdem.tif"
-epsg_orig <- "epsg:26919"
-
+#data_dir <- "BlackPond/" #with a / after ie. directory/
+#originaldem <- "bk1mdem.tif"
+#hydro_prepped_orig_dem <- "bk1mdem.tif"
+#epsg_orig <- "epsg:26919"
+#
+#data_dir <- "HBValley/" #with a / after ie. directory/
+#originaldem <- "knb-lter-hbr.211.2/dem1m.tif"
+#hydro_prepped_orig_dem <- "knb-lter-hbr.211.2/hydem1mlpns.tif"
+#epsg_orig <- "epsg:26919"
 
 
 #Aggregate 1 m DEM to 5 m
@@ -129,7 +133,8 @@ TPI
 ```{r}
 #TPI 20
 #filter x and y dimensions below are in cells
-#4 cells = 20 meters
+#3 cells = 15 meters
+##is 15 meters the RADIUS? RADIUS BELOW
 wbt_dev_from_mean_elev(
   dem = paste0(data_dir, "dem5m.tif"), 
   output = paste0(data_dir, "tpi15m.tif"), 
@@ -150,12 +155,12 @@ wbt_dev_from_mean_elev(
   filterx = 20, 
   filtery = 20)
 
-#TPI 200
+#TPI 200 #CHANGED TO RADIUS OF 200
 wbt_dev_from_mean_elev(
   dem = paste0(data_dir, "dem5m.tif"), 
   output = paste0(data_dir, "tpi200m.tif"), 
-  filterx = 40, 
-  filtery = 40)
+  filterx = 80, 
+  filtery = 80)
 
 #TPI 250
 wbt_dev_from_mean_elev(
@@ -192,25 +197,47 @@ wbt_dev_from_mean_elev(
   filterx = 400, 
   filtery = 400)
 
-#slope from unprocessed 1m DEM
 wbt_slope(
-  dem = paste0(data_dir, originaldem), 
-  output = paste0(data_dir, "slope.tif"))
+  dem = paste0(data_dir, "dem5m.tif"), 
+  output = paste0(data_dir, "slope_rad_5m.tif"),
+  units = "radians")
 
-#aggregate slope to 5m
-wbt_aggregate_raster(
-  input = paste0(data_dir, "slope.tif"),
-  output = paste0(data_dir, "slope5m_noproj.tif"),
-  agg_factor = 5
-  )
-
-#add projection to aggregated slope
-temp <- rast(paste0(data_dir, "slope5m_noproj.tif"))
-crs(temp) <- epsg_orig
-writeRaster(temp, 
-           paste0(data_dir, "slope5m.tif"),
-           overwrite = TRUE)
-
+##slope from unprocessed 1m DEM
+#wbt_slope(
+#  dem = paste0(data_dir, originaldem), 
+#  output = paste0(data_dir, "slope.tif"))
+#
+#wbt_slope(
+#  dem = paste0(data_dir, originaldem), 
+#  output = paste0(data_dir, "slope_rad.tif"),
+#  units = "radians")
+#
+##aggregate slope to 5m
+#wbt_aggregate_raster(
+#  input = paste0(data_dir, "slope.tif"),
+#  output = paste0(data_dir, "slope5m_noproj.tif"),
+#  agg_factor = 5
+#  )
+#
+#wbt_aggregate_raster(
+#  input = paste0(data_dir, "slope_rad.tif"),
+#  output = paste0(data_dir, "slope5m_rad_noproj.tif"),
+#  agg_factor = 5
+#  )
+#
+##add projection to aggregated slope
+#temp <- rast(paste0(data_dir, "slope5m_noproj.tif"))
+#crs(temp) <- epsg_orig
+#writeRaster(temp, 
+#           paste0(data_dir, "slope5m.tif"),
+#           overwrite = TRUE)
+#
+#temp <- rast(paste0(data_dir, "slope5m_rad_noproj.tif"))
+#crs(temp) <- epsg_orig
+#writeRaster(temp, 
+#           paste0(data_dir, "slope5m_rad.tif"),
+#           overwrite = TRUE)
+#
 #log md inf (Seibert & McGlynn 07) flow accumulation
 #1.65 seconds
 wbt_md_inf_flow_accumulation(
@@ -244,7 +271,7 @@ Run BOSS model to predict bedrock
 ```{r}
 source("boss.R")
 
-boss(maxslope = raster(paste0(data_dir,"slope5m.tif")),
+boss(maxslope = raster(paste0(data_dir,"slope5m_rad.tif")),
      tpi15 = raster(paste0(data_dir,"tpi15m.tif")),
      tpi200 = raster(paste0(data_dir,"tpi200m.tif")),
      dir = data_dir)

@@ -1,0 +1,57 @@
+library(raster)
+library(caret)
+library(tidyverse)
+
+# Visually interpreted bedrock presence/absence
+#n <- read.csv("~/R/bedrock2020/n_factor.csv")
+n <- read.csv("n_factor.csv")
+
+#coordinates(plots) <- ~easting+northing
+#proj4string(plots) <- CRS("+init=epsg:26919")
+
+# Make BDR a factor
+n$bdr_new = with(n, ifelse(bdr == 0, 'No', 
+                                ifelse(bdr == 1, 'Yes', 0)))
+n$bdr_new <- as.factor(n$bdr_new)
+
+
+# Import topo metrics
+mxslope <- raster("HBValley/slope_rad_5m.tif")
+hbtpi15 <- raster("HBValley/tpi15m.tif")
+hbtpi200 <- raster("HBValley/tpi200m.tif")
+
+#Stack and rename raster grids
+SPC <- stack(mxslope, hbtpi15, hbtpi200)
+names(SPC) <- c('maxslope', 'tpi15', 'tpi200')
+
+#extract topo metric values to n_factor points
+#make n spatial
+n_spat <- select(n, lon = x_coord, lat = y_coord) %>%
+  SpatialPoints(proj4string = CRS("+proj=longlat +datum=WGS84")) %>%
+  spTransform(CRS("+init=epsg:32610"))
+
+extracted <- raster::extract(x = SPC, #raster 
+                             y = n_spat, #points
+                             method = "simple")
+
+#extracted col names maxslope, tpi15, tpi200
+n <- cbind(n, extracted)
+
+# Prepare training scheme
+control <- trainControl(method="cv", number=5, classProbs=TRUE)
+
+# Train the GAM model
+set.seed(7)
+modelGAMs <- train(bdr_new ~ maxslope + tpi15 + tpi200,  metric = "Accuracy",
+                   data = n, method = "gam", trControl = control)
+
+# Predict the model (this takes a long time)
+map.GAM.c <- predict(SPC, modelGAMs, type = "raw", dataType = "INT1U",
+                     filename = "HBValley/hbmxslt15t200gam_new8.tif",
+                     format = "GTiff", overwrite = T, progress = "text")
+
+# Export the final predictions into a raster
+writeRaster(map.GAM.c, filename = "HBValley/bossBRprediction.tif",
+            format = "GTiff", progress="text", overwrite = TRUE) 
+
+plot(raster("HBValley/bossBRprediction.tif"))

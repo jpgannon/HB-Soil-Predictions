@@ -19,8 +19,10 @@ library(raster)
 library(whitebox)
 library(RSAGA)
 library(sf)
+library(qgisprocess)
 library(caret)
 
+algos <- qgis_algorithms()
 #install_whitebox()
 wbt_init()
 ```
@@ -47,7 +49,7 @@ depressions
 #hydro_prepped_orig_dem <- "bk1mdem.tif"
 #epsg_orig <- "epsg:26919"
 #
-#data_dir <- "HBValley/" #with a / after ie. directory/
+data_dir <- "HBValley/" #with a / after ie. directory/
 #originaldem <- "knb-lter-hbr.211.2/dem1m.tif"
 #hydro_prepped_orig_dem <- "knb-lter-hbr.211.2/hydem1mlpns.tif"
 #epsg_orig <- "epsg:26919"
@@ -119,11 +121,14 @@ tm_shape(hillshade)+
   tm_scale_bar()
 ```
 
-Original topo metrics (Gillin et al 2015) TPI 100 TWId EDb Uaab New
-metrics moving forward in Whitebox or RSAGA Max slope (1m) (use 1m DEM)
+Original topo metrics (Gillin et al 2015) TPI 100 TWId EDb Uaab 
+
+New metrics moving forward in Whitebox or RSAGA Max slope (1m) (use 1m DEM)
+
 TPI 20, 100, 500 (SAGA, DevFromMeanElev in WBT?) (5m but not smoothed)
 Multi-resolution valley bottom (MRVB; SAGA; 5m not smoothed) TWId
 (GRASS, raster calculator; 5m, hydro prepped) Feature preserving filter
+
 DEM (GRASS) Ln(UAA/tan(downslope index 5m distance))? SAGA \#downslope
 unsaturated flowpath with WBT free trial (1m, 5m, smooth/not)
 
@@ -159,8 +164,8 @@ wbt_dev_from_mean_elev(
 wbt_dev_from_mean_elev(
   dem = paste0(data_dir, "dem5m.tif"), 
   output = paste0(data_dir, "tpi200m.tif"), 
-  filterx = 80, 
-  filtery = 80)
+  filterx = 40, 
+  filtery = 40)
 
 #TPI 250
 wbt_dev_from_mean_elev(
@@ -281,8 +286,14 @@ boss(maxslope = raster(paste0(data_dir,"slope5m_rad.tif")),
 Bedrock weighted UAA
 ```{r}
 #euclidian distance from bedrock
+boss01 <- raster(paste0(data_dir,"bossBRprediction_sagatpi.tif"))
+boss01[boss01 == 1] <- 0
+boss01[boss01 == 2] <- 1 #BR == 2 means bedrock in current prediction model
+
+writeRaster(boss01, paste0(data_dir, "bossBRprediction_sagatpi.tif"), overwrite = TRUE)
+
 wbt_euclidean_distance(
-      input = paste0(data_dir,"bossBRprediction.tif"),
+      input = paste0(data_dir,"bossBRprediction_sagatpi.tif"),
       output = paste0(data_dir, "EDb.tif"))
 
 ```
@@ -314,73 +325,117 @@ Parameter for Slope: 4 Shape Parameter for Elevation Percentile: 3
 Update Views: true Classify: false Maximum Resolution (Percentage): 100
 
 ```{r}
-#tell R where saga is
-sagaenv <- rsaga.env("//Mac/Home/Documents/saga-8.1.1_x64/saga-8.1.1_x64")
+##tell R where saga is
+#sagaenv <- rsaga.env("//Mac/Home/Documents/saga-8.1.1_x64/saga-8.1.1_x64")
+#
+##convert 5m raster to saga file format
+#rast(paste0(data_dir, "dem5m.tif")) %>% 
+#  terra::writeRaster(filename = paste0(data_dir, "dem5m.sdat"),
+#              filetype = "SAGA")
+#
+#rsaga.get.modules(libs = "ta_morphometry",
+#                  env = sagaenv)
+#
+##rsaga.get.usage(lib = "ta_morphometry", 
+##                module = "Multiresolution Index of Valley Bottom Flatness (MRVBF)", 
+##                env = sagaenv)
+#
+##set parameters for mrvbf run (additional available are above this chunk)
+#params = list(DEM = paste0(data_dir, "dem5m.sgrd"),
+#              MRVBF = paste0(data_dir, "mrvbf.sdat"),
+#              MRRTF = paste0(data_dir, "mrrtf.sdat"))
+#
+##run mrvbf using parameters above
+#rsaga.geoprocessor(lib = "ta_morphometry", 
+#                   module = "Multiresolution Index of Valley Bottom Flatness (MRVBF)",
+#                   param = params,
+#                   env = sagaenv)
+#
+##read in the result of above, assign projection, write back out projected
+#mrvbf <- rast(paste0(data_dir, "mrvbf.sdat"))
+#crs(mrvbf) <- "epsg:26919"
+#writeRaster(mrvbf, paste0(data_dir, "mrvbf_projected.tif"), overwrite = TRUE)
 
-#convert 5m raster to saga file format
-rast(paste0(data_dir, "dem5m.tif")) %>% 
-  terra::writeRaster(filename = paste0(data_dir, "dem5m.sdat"),
-              filetype = "SAGA")
 
-rsaga.get.modules(libs = "ta_morphometry",
-                  env = sagaenv)
+###MRVBF in QGIS package
+dem <- raster(paste0(data_dir, "hydem5m.tif"))
 
-#rsaga.get.usage(lib = "ta_morphometry", 
-#                module = "Multiresolution Index of Valley Bottom Flatness (MRVBF)", 
-#                env = sagaenv)
+#qgis_show_help("saga:multiresolutionindexofvalleybottomflatnessmrvbf")
+qgis_run_algorithm(algorithm = "saga:multiresolutionindexofvalleybottomflatnessmrvbf",
+                  DEM = dem,
+                  MRVBF = paste0(data_dir, "mrvbf_qgis")
+                   )
 
-#set parameters for mrvbf run (additional available are above this chunk)
-params = list(DEM = paste0(data_dir, "dem5m.sgrd"),
-              MRVBF = paste0(data_dir, "mrvbf.sdat"),
-              MRRTF = paste0(data_dir, "mrrtf.sdat"))
-
-#run mrvbf using parameters above
-rsaga.geoprocessor(lib = "ta_morphometry", 
-                   module = "Multiresolution Index of Valley Bottom Flatness (MRVBF)",
-                   param = params,
-                   env = sagaenv)
-
-#read in the result of above, assign projection, write back out projected
-mrvbf <- rast(paste0(data_dir, "mrvbf.sdat"))
+mrvbf <- rast(paste0(data_dir, "mrvbf_qgis.sdat"))
 crs(mrvbf) <- "epsg:26919"
-writeRaster(mrvbf, paste0(data_dir, "mrvbf_projected.tif"), overwrite = TRUE)
+writeRaster(mrvbf, paste0(data_dir, "mrvbf.tif"), overwrite = TRUE)
 ```
 
-SAGA for weighted UAAb
-Tool: Flow Accumulation (Top-Down)
+Make UAAb bedrock weighted UAA using QGIS
 ```{r}
 #prep BR weight grid by making BR values 10000
-BR <- raster(paste0(data_dir,"bossBRprediction.tif"))
-BR[BR == 1] <- 10000
+BR <- raster(paste0(data_dir,"bossBRprediction_sagatpi.tif"))
+BR[BR == 2] <- 100000 #BR == 2 means bedrock in current prediction model
+BR[BR == 1] <- 0
 writeRaster(BR, paste0(data_dir, "BRweights.tif"), overwrite = TRUE)
-            
-#"saga_cmd ta_hydrology 0"
-#"ta_hydrology"
-#convert bedrock weight raster to saga file format
-rast(paste0(data_dir,"BRweights.tif")) %>% 
-  terra::writeRaster(filename = paste0(data_dir, "bossBR.sdat"),
-              filetype = "SAGA")
 
-rsaga.get.modules(libs = "ta_hydrology",
-                  env = sagaenv)
+#use QGIS to make UAAb
+weights <- raster(paste0(data_dir,"BRweights.tif"))
 
-#set parameters (https://saga-gis.sourceforge.io/saga_tool_doc/2.3.0/ta_hydrology_0.html)
-params = list(ELEVATION = paste0(data_dir, "dem5m.sgrd"),
-              WEIGHTS = paste0(data_dir, "BRweights.sdat"),
-              METHOD = 4,
-              FLOW = paste0(data_dir, "UAAb.sdat"))
+qgis_run_algorithm(algorithm = "saga:catchmentarearecursive",
+                   FLOW_UNIT = 0,
+                  ELEVATION = dem,
+                  METHOD = 3,
+                  NO_NEGATIVES = 1,
+                  FLOW = paste0(data_dir, "catcharea")
+                   )
 
-#run mrvbf using parameters above
-rsaga.geoprocessor(lib = "ta_hydrology", 
-                   module = "Flow Accumulation (Top-Down)",
-                   param = params,
-                   env = sagaenv)
+catcharea <- rast(paste0(data_dir, "catcharea.sdat"))
+crs(catcharea) <- "epsg:26919"
+writeRaster(catcharea, paste0(data_dir, "catcharea.tif"), overwrite = TRUE)
 
-#read in the result of above, assign projection, write back out projected
-UAAb <- rast(paste0(data_dir, "UAAb.sdat"))
-crs(UAAb) <- "epsg:26919"
-writeRaster(UAAb, paste0(data_dir, "UAAb.tif"), overwrite = TRUE)
+#weighted
+#qgis_show_help("saga:catchmentarearecursive")
+qgis_run_algorithm(algorithm = "saga:catchmentarearecursive",
+                  ELEVATION = dem,
+                  FLOW_UNIT = 0,
+                  METHOD = 3,
+                  WEIGHTS = weights,
+                  NO_NEGATIVES = 1,
+                  FLOW = paste0(data_dir, "catcharea_br")
+                   )
 
+catcharea_br <- rast(paste0(data_dir, "catcharea_br.sdat"))
+crs(catcharea) <- "epsg:26919"
+writeRaster(catcharea_br, paste0(data_dir, "catcharea_br.tif"), overwrite = TRUE)
+
+diff <- catcharea_br/catcharea
+normdiff <- (diff - minmax(diff)[1]) / (minmax(diff)[2] - minmax(diff)[1])
+writeRaster(normdiff, paste0(data_dir, "uaab_norm2.tif"), overwrite = TRUE)
+
+```
+```{r}
+#qgis_show_help("saga:topographicpositionindextpi")
+
+qgis_run_algorithm(algorithm = "saga:topographicpositionindextpi",
+                  DEM = dem,
+                  RADIUS_MIN = 15,
+                  TPI = paste0(data_dir, "tpi15saga")
+                   )
+tpi15saga <- rast(paste0(data_dir, "tpi15saga.sdat"))
+crs(tpi15saga) <- "epsg:26919"
+writeRaster(tpi15saga, paste0(data_dir, "tpi15saga.tif"), overwrite = TRUE)
+
+qgis_run_algorithm(algorithm = "saga:topographicpositionindextpi",
+                  DEM = dem,
+                  RADIUS_MAX = 200,
+                  RADIUS_MIN = 200,
+                  TPI = paste0(data_dir, "tpi200saga")
+                   )
+
+tpi200saga <- rast(paste0(data_dir, "tpi200saga.sdat"))
+crs(tpi200saga) <- "epsg:26919"
+writeRaster(tpi200saga, paste0(data_dir, "tpi200saga.tif"), overwrite = TRUE)
 
 ```
 

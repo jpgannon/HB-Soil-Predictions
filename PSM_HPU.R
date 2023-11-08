@@ -15,7 +15,7 @@ library(rgdal)
 library(geoR)
 #Load Ensemble Machine Learning packages
 library(landmap) #not on CRAN, install using devtool install_github
-library(plotKML) #not on CRAN
+#library(plotKML) #not on CRAN
 library(viridis) 
 library(glmnet)
 library(xgboost)
@@ -25,6 +25,7 @@ library(mlr)
 library(rpart)
 library(nnet)
 library(rgdal)
+library(tmap)
 
 
 
@@ -32,16 +33,18 @@ data_dir <- "HBValley/"
 
 #Add raster files (always from the main project folder otherwise things start to fail)
 hbmaxslope <- raster(paste0(data_dir,"slope_rad_5m.tif"))
-hbuaab     <- raster(paste0(data_dir,"UAAb.tif"))
-twid <- raster(paste0(data_dir,"hbtwid.tif")) #twi
-mrvbf      <- raster(paste0(data_dir,"mrvbf_projected.tif"))
+hbuaab     <- raster(paste0(data_dir,"uaab_norm2.tif"))
+twid       <- raster(paste0(data_dir,"hbtwid.tif")) #twi
+mrvbf      <- raster(paste0(data_dir,"mrvbf.tif"))
 tpi20      <- raster(paste0(data_dir,"tpi20m.tif"))
 tpi100     <- raster(paste0(data_dir,"tpi100m.tif"))
 tpi200     <- raster(paste0(data_dir,"tpi200m.tif"))
 tpi500     <- raster(paste0(data_dir,"tpi500m.tif"))
 tpi2000    <- raster(paste0(data_dir,"tpi2000m.tif"))
+EDb        <- log10(raster(paste0(data_dir, "EDb.tif")))
 #hbedbgam45 <- raster(paste0(data_dir,"hbedbgam45rec.tif"))
-bedrock <- raster(paste0(data_dir, "bossBRprediction.tif"))
+#bedrock    <- raster(paste0(data_dir, "bossBRprediction.tif"))
+
 #NDVI       <- raster(paste0(data_dir,"S2aNDVI.tif"))
 #twid <- raster("hydem5m_TWId.tif")
 
@@ -63,11 +66,20 @@ proj4string(plots) <- CRS("+init=epsg:26919")
 plots$hpu <- as.factor(plots$hpu)
 levels(plots$hpu)
 
+#check points and rasters align
+tmap_mode("view")
+tm_shape((hbuaab))+
+  tm_raster(style = "cont")+
+  #tm_shape(bedrock)+
+  #tm_raster(style = "cont")+
+  tm_shape(plots)+
+  tm_dots(col = "red")
+
 ######################################################################################
 # https://opengeohub.github.io/spatial-sampling-ml/generating-spatial-sampling.html
 # Stack rasters and use naming convention from fields in pedon shapefile (this could be cleaned up in the future!)
-SPC <- stack(tpi20, tpi100, tpi200, mrvbf, hbuaab, bedrock, twid)
-names(SPC) <- c('tpi20', 'tpi100', 'tpi200m', 'mrvbf', 'hbuaab', 'bedrock', 'twid')
+SPC <- stack(tpi20, tpi100, tpi200, mrvbf, hbuaab, EDb, twid)
+names(SPC) <- c('tpi20', 'tpi100', 'tpi200m', 'mrvbf', 'hbuaab', 'EDb', 'twid')
 
 # PC transformation of a subset and then all covariates (if needed)
 # spdf_spc = landmap::spc(spdf_all_layers)
@@ -81,12 +93,12 @@ spdf_all_layers <- as(SPC, "SpatialPixelsDataFrame")
 SL.library <- c("classif.ranger", "classif.svm", "classif.multinom")
 
 mC <- train.spLearner(plots["hpu"], 
-                      covariates=spdf_all_layers[,c('tpi20', 'tpi100', 'tpi200m',
-                                                    'mrvbf', 'hbuaab', 'bedrock',
+                      covariates = spdf_all_layers[,c('tpi20', 'tpi100', 'tpi200m',
+                                                    'mrvbf', 'hbuaab', 'EDb',
                                                     'twid')],
                       SL.library = SL.library, 
                       super.learner = "classif.glmnet", 
-                      parallel=FALSE, 
+                      parallel = FALSE, 
                       oblique.coords = TRUE)
 
 
@@ -99,7 +111,7 @@ writeRaster(r,
             paste0(data_dir, "modelout", Sys.Date(), ".tif"), 
             overwrite=TRUE)
 
-
+test <- raster(paste0(data_dir, "Model_Verified.tif"))
 #########################################################################################################
 # CONFUSION MATRIX
 #########################################################################################################

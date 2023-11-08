@@ -17,8 +17,10 @@ n$bdr_new <- as.factor(n$bdr_new)
 
 # Import topo metrics
 mxslope <- raster("HBValley/slope_rad_5m.tif")
-hbtpi15 <- raster("HBValley/tpi15m.tif")
-hbtpi200 <- raster("HBValley/tpi200m.tif")
+#hbtpi15 <- raster("HBValley/tpi15m.tif")
+#hbtpi200 <- raster("HBValley/tpi200m.tif")
+hbtpi15 <- raster("HBValley/tpi15saga.tif")
+hbtpi200 <- raster("HBValley/tpi200saga.tif")
 
 #Stack and rename raster grids
 SPC <- stack(mxslope, hbtpi15, hbtpi200)
@@ -26,7 +28,7 @@ names(SPC) <- c('maxslope', 'tpi15', 'tpi200')
 
 #extract topo metric values to n_factor points
 #make n spatial
-n_spat <- select(n, lon = x_coord, lat = y_coord) %>%
+n_spat <- dplyr::select(n, lon = x_coord, lat = y_coord) %>%
   SpatialPoints(proj4string = CRS("+proj=longlat +datum=WGS84")) %>%
   spTransform(CRS("+init=epsg:32610"))
 
@@ -46,12 +48,17 @@ modelGAMs <- train(bdr_new ~ maxslope + tpi15 + tpi200,  metric = "Accuracy",
                    data = n, method = "gam", trControl = control)
 
 # Predict the model (this takes a long time)
-map.GAM.c <- predict(SPC, modelGAMs, type = "raw", dataType = "INT1U",
-                     filename = "HBValley/hbmxslt15t200gam_new8.tif",
+map.GAM.c <- predict(SPC, modelGAMs, type = "prob", dataType = "INT1U",
+                     filename = "HBValley/hbmxslt15t200gam_new9.tif",
                      format = "GTiff", overwrite = T, progress = "text")
+map.GAC.c.BU <- map.GAM.c
+#classify BR areas 2 = BR 1 = Not BR
+BRthreshold <- 0.45
+map.GAM.c[map.GAM.c >= BRthreshold] <- 1
+map.GAM.c[map.GAM.c < BRthreshold] <- 2
 
 # Export the final predictions into a raster
-writeRaster(map.GAM.c, filename = "HBValley/bossBRprediction.tif",
+writeRaster(map.GAM.c, filename = "HBValley/bossBRprediction_sagatpi.tif",
             format = "GTiff", progress="text", overwrite = TRUE) 
 
-plot(raster("HBValley/bossBRprediction.tif"))
+plot(raster("HBValley/bossBRprediction_sagatpi.tif"))

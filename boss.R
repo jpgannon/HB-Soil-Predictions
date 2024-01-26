@@ -53,12 +53,16 @@ map.GAM.c <- predict(SPC, modelGAMs, type = "prob", dataType = "INT1U",
                      format = "GTiff", overwrite = T, progress = "text")
 map.GAC.c.BU <- map.GAM.c
 #classify BR areas 2 = BR 1 = Not BR
-BRthreshold <- 0.45
+BRthreshold <- 0.50
 map.GAM.c[map.GAM.c >= BRthreshold] <- 1
 map.GAM.c[map.GAM.c < BRthreshold] <- 2
 
 # Export the final predictions into a raster
 writeRaster(map.GAM.c, filename = "HBValley/bossBRprediction_sagatpi.tif",
             format = "GTiff", progress="text", overwrite = TRUE) 
-
+writeRaster(map.GAC.c.BU, filename = "HBValley/bossBRprobs_sagatpi.tif",
+            format = "GTiff", progress="text", overwrite = TRUE) 
 plot(raster("HBValley/bossBRprediction_sagatpi.tif"))
+par(new = TRUE)
+plot(bedrockpredictionOG)
+

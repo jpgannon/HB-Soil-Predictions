@@ -136,113 +136,19 @@ TPI
 <https://www.whiteboxgeo.com/manual/wbt_book/available_tools/geomorphometric_analysis.html?highlight=topographic%20position#relativetopographicposition>
 
 ```{r}
-#TPI 20
-#filter x and y dimensions below are in cells
-#3 cells = 15 meters
-##is 15 meters the RADIUS? RADIUS BELOW
-wbt_dev_from_mean_elev(
-  dem = paste0(data_dir, "dem5m.tif"), 
-  output = paste0(data_dir, "tpi15m.tif"), 
-  filterx = 3, 
-  filtery = 3)
 
-#TPI20
-wbt_dev_from_mean_elev(
-  dem = paste0(data_dir, "dem5m.tif"), 
-  output = paste0(data_dir, "tpi20m.tif"), 
-  filterx = 4, 
-  filtery = 4)
+#qgis_show_help("saga:slopeaspectcurvature")
+dem <- rast(paste0(data_dir, "dem5m.tif"))
+qgis_run_algorithm(algorithm = "saga:slopeaspectcurvature",
+                  ELEVATION = dem,
+                  METHOD = 0,
+                  UNIT_SLOPE = 2,
+                  SLOPE = paste0(data_dir, "slope_per_qgis_5m")
+                   )
+qgis_slope <- rast(paste0(data_dir, "slope_per_qgis_5m.sdat"))
+crs(qgis_slope) <- "epsg:26919"
+writeRaster(qgis_slope, paste0(data_dir, "slope_per_qgis.tif"), overwrite = TRUE)
 
-#TPI 100
-wbt_dev_from_mean_elev(
-  dem = paste0(data_dir, "dem5m.tif"), 
-  output = paste0(data_dir, "tpi100m.tif"), 
-  filterx = 20, 
-  filtery = 20)
-
-#TPI 200 #CHANGED TO RADIUS OF 200
-wbt_dev_from_mean_elev(
-  dem = paste0(data_dir, "dem5m.tif"), 
-  output = paste0(data_dir, "tpi200m.tif"), 
-  filterx = 40, 
-  filtery = 40)
-
-#TPI 250
-wbt_dev_from_mean_elev(
-  dem = paste0(data_dir, "dem5m.tif"), 
-  output = paste0(data_dir, "tpi250m.tif"), 
-  filterx = 50, 
-  filtery = 50)
-
-#TPI 500
-wbt_dev_from_mean_elev(
-  dem = paste0(data_dir, "dem5m.tif"), 
-  output = paste0(data_dir, "tpi500m.tif"), 
-  filterx = 100, 
-  filtery = 100)
-
-#TPI 1000
-wbt_dev_from_mean_elev(
-  dem = paste0(data_dir, "dem5m.tif"), 
-  output = paste0(data_dir, "tpi1000m.tif"), 
-  filterx = 200, 
-  filtery = 200)
-
-#TPI 1500
-wbt_dev_from_mean_elev(
-  dem = paste0(data_dir, "dem5m.tif"), 
-  output = paste0(data_dir, "tpi1500m.tif"), 
-  filterx = 300, 
-  filtery = 300)
-
-#TPI 2000
-wbt_dev_from_mean_elev(
-  dem = paste0(data_dir, "dem5m.tif"), 
-  output = paste0(data_dir, "tpi2000m.tif"), 
-  filterx = 400, 
-  filtery = 400)
-
-wbt_slope(
-  dem = paste0(data_dir, "dem5m.tif"), 
-  output = paste0(data_dir, "slope_rad_5m.tif"),
-  units = "radians")
-
-##slope from unprocessed 1m DEM
-#wbt_slope(
-#  dem = paste0(data_dir, originaldem), 
-#  output = paste0(data_dir, "slope.tif"))
-#
-#wbt_slope(
-#  dem = paste0(data_dir, originaldem), 
-#  output = paste0(data_dir, "slope_rad.tif"),
-#  units = "radians")
-#
-##aggregate slope to 5m
-#wbt_aggregate_raster(
-#  input = paste0(data_dir, "slope.tif"),
-#  output = paste0(data_dir, "slope5m_noproj.tif"),
-#  agg_factor = 5
-#  )
-#
-#wbt_aggregate_raster(
-#  input = paste0(data_dir, "slope_rad.tif"),
-#  output = paste0(data_dir, "slope5m_rad_noproj.tif"),
-#  agg_factor = 5
-#  )
-#
-##add projection to aggregated slope
-#temp <- rast(paste0(data_dir, "slope5m_noproj.tif"))
-#crs(temp) <- epsg_orig
-#writeRaster(temp, 
-#           paste0(data_dir, "slope5m.tif"),
-#           overwrite = TRUE)
-#
-#temp <- rast(paste0(data_dir, "slope5m_rad_noproj.tif"))
-#crs(temp) <- epsg_orig
-#writeRaster(temp, 
-#           paste0(data_dir, "slope5m_rad.tif"),
-#           overwrite = TRUE)
-#
 #log md inf (Seibert & McGlynn 07) flow accumulation
 #1.65 seconds
 wbt_md_inf_flow_accumulation(
@@ -263,8 +169,8 @@ wbt_downslope_index(
 mdinf <- rast(paste0(data_dir, "hydem5m_mdinf_fa.tif"))
 tan_ds_index <- rast(paste0(data_dir, "hydem5m_downslope_index.tif"))
 
-#divide log flow accumulation by tangent of downslope index
-TWId <- base::log(mdinf / tan_ds_index)
+#divide natural log flow accumulation by tangent of downslope index
+TWId <- base::log(mdinf / tan_ds_index) #log10?
 crs(TWId) <- epsg_orig
 
 #output TWId to file
@@ -274,12 +180,12 @@ writeRaster(TWId, paste0(data_dir, "hydem5m_TWId.tif"), overwrite = TRUE)
 
 Run BOSS model to predict bedrock
 ```{r}
-source("boss.R")
-
-boss(maxslope = raster(paste0(data_dir,"slope5m_rad.tif")),
-     tpi15 = raster(paste0(data_dir,"tpi15m.tif")),
-     tpi200 = raster(paste0(data_dir,"tpi200m.tif")),
-     dir = data_dir)
+#source("boss.R")
+#
+#boss(maxslope = raster(paste0(data_dir,"slope5m_rad.tif")),
+#     tpi15 = raster(paste0(data_dir,"tpi15m.tif")),
+#     tpi200 = raster(paste0(data_dir,"tpi200m.tif")),
+#     dir = data_dir)
 
 
 ```
@@ -325,38 +231,6 @@ Parameter for Slope: 4 Shape Parameter for Elevation Percentile: 3
 Update Views: true Classify: false Maximum Resolution (Percentage): 100
 
 ```{r}
-##tell R where saga is
-#sagaenv <- rsaga.env("//Mac/Home/Documents/saga-8.1.1_x64/saga-8.1.1_x64")
-#
-##convert 5m raster to saga file format
-#rast(paste0(data_dir, "dem5m.tif")) %>% 
-#  terra::writeRaster(filename = paste0(data_dir, "dem5m.sdat"),
-#              filetype = "SAGA")
-#
-#rsaga.get.modules(libs = "ta_morphometry",
-#                  env = sagaenv)
-#
-##rsaga.get.usage(lib = "ta_morphometry", 
-##                module = "Multiresolution Index of Valley Bottom Flatness (MRVBF)", 
-##                env = sagaenv)
-#
-##set parameters for mrvbf run (additional available are above this chunk)
-#params = list(DEM = paste0(data_dir, "dem5m.sgrd"),
-#              MRVBF = paste0(data_dir, "mrvbf.sdat"),
-#              MRRTF = paste0(data_dir, "mrrtf.sdat"))
-#
-##run mrvbf using parameters above
-#rsaga.geoprocessor(lib = "ta_morphometry", 
-#                   module = "Multiresolution Index of Valley Bottom Flatness (MRVBF)",
-#                   param = params,
-#                   env = sagaenv)
-#
-##read in the result of above, assign projection, write back out projected
-#mrvbf <- rast(paste0(data_dir, "mrvbf.sdat"))
-#crs(mrvbf) <- "epsg:26919"
-#writeRaster(mrvbf, paste0(data_dir, "mrvbf_projected.tif"), overwrite = TRUE)
-
-
 ###MRVBF in QGIS package
 dem <- raster(paste0(data_dir, "hydem5m.tif"))
 
@@ -383,7 +257,7 @@ writeRaster(BR, paste0(data_dir, "BRweights.tif"), overwrite = TRUE)
 weights <- raster(paste0(data_dir,"BRweights.tif"))
 
 qgis_run_algorithm(algorithm = "saga:catchmentarearecursive",
-                   FLOW_UNIT = 0,
+                  FLOW_UNIT = 0,
                   ELEVATION = dem,
                   METHOD = 3,
                   NO_NEGATIVES = 1,
@@ -417,25 +291,34 @@ writeRaster(normdiff, paste0(data_dir, "uaab_norm2.tif"), overwrite = TRUE)
 ```{r}
 #qgis_show_help("saga:topographicpositionindextpi")
 
-qgis_run_algorithm(algorithm = "saga:topographicpositionindextpi",
+sagatpi <- function(dem, data_dir, radius){
+  qgis_run_algorithm(algorithm = "saga:topographicpositionindextpi",
                   DEM = dem,
-                  RADIUS_MIN = 15,
-                  TPI = paste0(data_dir, "tpi15saga")
+                  RADIUS_MIN = radius,
+                  RADIUS_MAX = radius,
+                  TPI = paste0(data_dir, "tpi", radius, "saga")
                    )
-tpi15saga <- rast(paste0(data_dir, "tpi15saga.sdat"))
-crs(tpi15saga) <- "epsg:26919"
-writeRaster(tpi15saga, paste0(data_dir, "tpi15saga.tif"), overwrite = TRUE)
+  
+  tpisaga <- rast(paste0(data_dir, "tpi", radius, "saga.sdat"))
+  
+  crs(tpisaga) <- "epsg:26919"
+  
+  writeRaster(tpisaga, 
+              paste0(data_dir, "tpi", radius, "saga.tif"), 
+              overwrite = TRUE)
+}
 
-qgis_run_algorithm(algorithm = "saga:topographicpositionindextpi",
-                  DEM = dem,
-                  RADIUS_MAX = 200,
-                  RADIUS_MIN = 200,
-                  TPI = paste0(data_dir, "tpi200saga")
-                   )
+sagatpi(dem, data_dir, radius = 15)
+sagatpi(dem, data_dir, radius = 20)
+sagatpi(dem, data_dir, radius = 100)
+sagatpi(dem, data_dir, radius = 200)
+sagatpi(dem, data_dir, radius = 250)
+sagatpi(dem, data_dir, radius = 500)
+sagatpi(dem, data_dir, radius = 1000)
+sagatpi(dem, data_dir, radius = 1500)
+sagatpi(dem, data_dir, radius = 2000)
+sagatpi(dem, data_dir, radius = 2500)
 
-tpi200saga <- rast(paste0(data_dir, "tpi200saga.sdat"))
-crs(tpi200saga) <- "epsg:26919"
-writeRaster(tpi200saga, paste0(data_dir, "tpi200saga.tif"), overwrite = TRUE)
 
 ```
 

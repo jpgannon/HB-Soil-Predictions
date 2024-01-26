@@ -27,8 +27,6 @@ library(nnet)
 library(rgdal)
 library(tmap)
 
-
-
 data_dir <- "HBValley/"
 
 #Add raster files (always from the main project folder otherwise things start to fail)
@@ -36,12 +34,12 @@ hbmaxslope <- raster(paste0(data_dir,"slope_rad_5m.tif"))
 hbuaab     <- raster(paste0(data_dir,"uaab_norm2.tif"))
 twid       <- raster(paste0(data_dir,"hbtwid.tif")) #twi
 mrvbf      <- raster(paste0(data_dir,"mrvbf.tif"))
-tpi20      <- raster(paste0(data_dir,"tpi20m.tif"))
-tpi100     <- raster(paste0(data_dir,"tpi100m.tif"))
-tpi200     <- raster(paste0(data_dir,"tpi200m.tif"))
-tpi500     <- raster(paste0(data_dir,"tpi500m.tif"))
-tpi2000    <- raster(paste0(data_dir,"tpi2000m.tif"))
-EDb        <- log10(raster(paste0(data_dir, "EDb.tif")))
+tpi20      <- raster(paste0(data_dir,"tpi20msaga.tif"))
+tpi100     <- raster(paste0(data_dir,"tpi100msaga.tif"))
+tpi200     <- raster(paste0(data_dir,"tpi200msaga.tif"))
+tpi500     <- raster(paste0(data_dir,"tpi500msaga.tif"))
+tpi2000    <- raster(paste0(data_dir,"tpi2000msaga.tif"))
+EDb        <- raster(paste0(data_dir, "EDb.tif"))
 #hbedbgam45 <- raster(paste0(data_dir,"hbedbgam45rec.tif"))
 #bedrock    <- raster(paste0(data_dir, "bossBRprediction.tif"))
 
@@ -101,14 +99,14 @@ mC <- train.spLearner(plots["hpu"],
                       parallel = FALSE, 
                       oblique.coords = TRUE)
 
+saveRDS(mC, paste0(data_dir, "model", Sys.Date(), "4.rds"))
 
 # Predict. This will take a long time!
 hb.hpu <- predict(mC)
 
-
 r <- raster(hb.hpu$pred, "response")
 writeRaster(r, 
-            paste0(data_dir, "modelout", Sys.Date(), ".tif"), 
+            paste0(data_dir, "modelout", Sys.Date(), "4.tif"), 
             overwrite=TRUE)
 
 test <- raster(paste0(data_dir, "Model_Verified.tif"))
